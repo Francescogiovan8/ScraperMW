@@ -96,6 +96,12 @@ def download_volume(opera_url,volume_number):
     if os.path.exists(dir_path):
         shutil.rmtree(dir_path)
 
+def download_all_volumes(opera_url):
+    volumes_num=get_volume_count(opera_url)
+    for x in range(volumes_num):
+        print("SCARICO IL VOLUME",x+1)
+        download_volume(opera_url,x+1)
+
 def create_pdf(opera_name,volume_num):
     root = f"{opera_name}/volume-{volume_num}"
     immagini = []
@@ -132,6 +138,6 @@ def create_pdf(opera_name,volume_num):
     print(f"\n📕 PDF creato correttamente: {pdf_path}")
 
 if len(sys.argv)==2:
-    print("L'opera ha ",get_volume_count(sys.argv[1])," volumi")
+    download_all_volumes(sys.argv[1])
 elif len(sys.argv)==3:
     download_volume(sys.argv[1],int(sys.argv[2]))
