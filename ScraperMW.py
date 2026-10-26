@@ -11,5 +11,33 @@ def get_volume_count(opera_url):
     soup = BeautifulSoup(response.text, 'html.parser')
     return len(soup.find_all("div",class_="volume-element"))
 
+def get_chapter_url_list(opera_url,volume_number):
+    if(get_volume_count(opera_url)<volume_number or volume_number<1):
+        print("ATTEZIONE! L'opera è formata da", get_volume_count(opera_url), "volumi!")
+        return []
+    response=requests.get(opera_url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    volume=soup.find_all("div",class_="volume-element")[get_volume_count(opera_url)-volume_number]
+    chapters = volume.find_all("div", class_="chapter")
+    chapters_link = [
+        chapter.find("a", class_="chap")["href"]
+        for chapter in chapters
+    ]
+    return chapters_link
+
+def get_chapter_number(opera_url,volume_number):
+    if(get_volume_count(opera_url)<volume_number):
+        print("ATTEZIONE! L'opera è formata solo da", get_volume_count(opera_url), "volumi!")
+        return []
+    response=requests.get(opera_url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    volume=soup.find_all("div",class_="volume-element")[get_volume_count(opera_url)-volume_number]
+    chapters = volume.find_all("div", class_="chapter")
+    return len(chapters)
+
 if len(sys.argv)==2:
     print("L'opera ha ",get_volume_count(sys.argv[1])," volumi")
+elif len(sys.argv)==3:
+    print(get_chapter_number(sys.argv[1],int(sys.argv[2])))
+    print(get_chapter_url_list(sys.argv[1],int(sys.argv[2])))
+
