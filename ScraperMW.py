@@ -1,6 +1,10 @@
+import os
 import sys
 import requests
 from bs4 import BeautifulSoup
+from PIL import Image
+import shutil
+
 
 print("Argomenti totali:", len(sys.argv))
 print("Nome dello script:", sys.argv[0])
@@ -55,11 +59,79 @@ def get_chapter_url_img_list(chapter_link, chapter_num_page):
         img_url_list.append(image_url)
     return img_url_list
 
+def get_opera_name(opera_url):
+    response=requests.get(opera_url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    name = soup.find("h1",class_="name").get_text(strip=True)
+    return name
 
+def download_volume(opera_url,volume_number):
+    opera_name=get_opera_name(opera_url)
+    #print(opera_name)
+    chapter_number=0
+    chapters_link=get_chapter_url_list(opera_url,volume_number)
+    for chapter_link in chapters_link:
+        chapter_number+=1
+        num_page=0
+        chapter_url_img_list=get_chapter_url_img_list(chapter_link, get_chapter_page_numer(chapter_link))
+        for img in chapter_url_img_list:
+            response = requests.get(img)
+            num_page+=1
+
+            # Crea cartelle
+            dir_path = f"{opera_name}/volume-{volume_number}/capitolo-{chapter_number}"
+            os.makedirs(dir_path, exist_ok=True)
+            filename = os.path.join(dir_path, f"{num_page}.jpg")
+
+            response.raise_for_status()  # altri errori HTTP
+            # Salva l'immagine
+            with open(filename, "wb") as f:
+                f.write(response.content)
+            print(f"Pagina {num_page} del capitolo {chapter_number} scaricata!")
+
+    create_pdf(opera_name, volume_number)
+
+    dir_path = f"{opera_name}/volume-{volume_number}"
+
+    if os.path.exists(dir_path):
+        shutil.rmtree(dir_path)
+
+def create_pdf(opera_name,volume_num):
+    root = f"{opera_name}/volume-{volume_num}"
+    immagini = []
+
+    # Elenco cartelle capitoli, es: capitolo-122, capitolo-123, ...
+    capitoli = sorted(
+        [d for d in os.listdir(root) if d.startswith("capitolo-")],
+        key=lambda x: int(x.split("-")[1])  # ordina per numero capitolo
+    )
+
+    for cap in capitoli:
+        cartella = os.path.join(root, cap)
+
+        # Elenco pagine in ordine numerico
+        pagine = sorted(
+            [f for f in os.listdir(cartella) if f.endswith(".jpg")],
+            key=lambda x: int(x.split(".")[0])
+        )
+
+        for pagina in pagine:
+            path_img = os.path.join(cartella, pagina)
+            immagini.append(path_img)
+
+    if not immagini:
+        print("Nessuna immagine trovata, impossibile creare PDF.")
+        return
+
+    # Apri tutte le immagini con Pillow
+    pil_images = [Image.open(img).convert("RGB") for img in immagini]
+
+    # Prima immagine è la "copertina"
+    pdf_path = f"{opera_name}/volume-{volume_num}.pdf"
+    pil_images[0].save(pdf_path, save_all=True, append_images=pil_images[1:])
+    print(f"\n📕 PDF creato correttamente: {pdf_path}")
 
 if len(sys.argv)==2:
     print("L'opera ha ",get_volume_count(sys.argv[1])," volumi")
 elif len(sys.argv)==3:
-    print(get_chapter_number(sys.argv[1],int(sys.argv[2])))
-    chapters_link=get_chapter_url_list(sys.argv[1],int(sys.argv[2]))
-    print(get_chapter_url_img_list(chapters_link[0], get_chapter_page_numer(chapters_link[0])))
+    download_volume(sys.argv[1],int(sys.argv[2]))
