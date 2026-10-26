@@ -23,6 +23,7 @@ def get_chapter_url_list(opera_url,volume_number):
         chapter.find("a", class_="chap")["href"]
         for chapter in chapters
     ]
+    chapters_link.reverse()
     return chapters_link
 
 def get_chapter_number(opera_url,volume_number):
@@ -35,9 +36,17 @@ def get_chapter_number(opera_url,volume_number):
     chapters = volume.find_all("div", class_="chapter")
     return len(chapters)
 
+def get_chapter_page_numer(chapter_link):
+    response=requests.get(chapter_link)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    select=soup.find("select",class_="page")
+    options=select.find_all("option")
+    return len(options)
+
+
 if len(sys.argv)==2:
     print("L'opera ha ",get_volume_count(sys.argv[1])," volumi")
 elif len(sys.argv)==3:
     print(get_chapter_number(sys.argv[1],int(sys.argv[2])))
-    print(get_chapter_url_list(sys.argv[1],int(sys.argv[2])))
-
+    chapters_link=get_chapter_url_list(sys.argv[1],int(sys.argv[2]))
+    print(get_chapter_page_numer(chapters_link[0]))
