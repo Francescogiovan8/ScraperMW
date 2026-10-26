@@ -43,10 +43,23 @@ def get_chapter_page_numer(chapter_link):
     options=select.find_all("option")
     return len(options)
 
+def get_chapter_url_img_list(chapter_link, chapter_num_page):
+    img_url_list=[]
+    for x in range(chapter_num_page):
+        actual_url=chapter_link+"/"+str(x+1)
+        response=requests.get(actual_url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        image=soup.find("div",id="page")
+        image_url=image.find("img", class_="img-fluid")["src"]
+        print(image_url)
+        img_url_list.append(image_url)
+    return img_url_list
+
+
 
 if len(sys.argv)==2:
     print("L'opera ha ",get_volume_count(sys.argv[1])," volumi")
 elif len(sys.argv)==3:
     print(get_chapter_number(sys.argv[1],int(sys.argv[2])))
     chapters_link=get_chapter_url_list(sys.argv[1],int(sys.argv[2]))
-    print(get_chapter_page_numer(chapters_link[0]))
+    print(get_chapter_url_img_list(chapters_link[0], get_chapter_page_numer(chapters_link[0])))
