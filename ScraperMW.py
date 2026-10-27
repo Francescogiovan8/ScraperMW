@@ -1,143 +1,302 @@
-import os
-import sys
+import argparse
+import re
+import shutil
+from io import BytesIO
+from pathlib import Path
+from urllib.parse import urljoin
+
 import requests
 from bs4 import BeautifulSoup
 from PIL import Image
-import shutil
 
 
-print("Argomenti totali:", len(sys.argv))
-print("Nome dello script:", sys.argv[0])
-print("Argomenti:", sys.argv[1:])
+TIMEOUT = 30
+
+
+def fetch_soup(url, session):
+    """Scarica una pagina e restituisce il suo oggetto BeautifulSoup."""
+    response = session.get(url, timeout=TIMEOUT)
+    response.raise_for_status()
+    return BeautifulSoup(response.text, "html.parser")
+
+
+def get_volume_elements(soup):
+    """Restituisce gli elementi HTML che rappresentano i volumi."""
+    return soup.find_all("div", class_="volume-element")
+
 
 def get_volume_count(opera_url):
-    response=requests.get(opera_url)
-    soup = BeautifulSoup(response.text, 'html.parser')
-    return len(soup.find_all("div",class_="volume-element"))
+    """Restituisce il numero totale di volumi dell'opera."""
+    with requests.Session() as session:
+        soup = fetch_soup(opera_url, session)
+        return len(get_volume_elements(soup))
 
-def get_chapter_url_list(opera_url,volume_number):
-    if(get_volume_count(opera_url)<volume_number or volume_number<1):
-        print("ATTEZIONE! L'opera è formata da", get_volume_count(opera_url), "volumi!")
-        return []
-    response=requests.get(opera_url)
-    soup = BeautifulSoup(response.text, 'html.parser')
-    volume=soup.find_all("div",class_="volume-element")[get_volume_count(opera_url)-volume_number]
-    chapters = volume.find_all("div", class_="chapter")
-    chapters_link = [
-        chapter.find("a", class_="chap")["href"]
-        for chapter in chapters
-    ]
-    chapters_link.reverse()
-    return chapters_link
 
-def get_chapter_number(opera_url,volume_number):
-    if(get_volume_count(opera_url)<volume_number):
-        print("ATTEZIONE! L'opera è formata solo da", get_volume_count(opera_url), "volumi!")
-        return []
-    response=requests.get(opera_url)
-    soup = BeautifulSoup(response.text, 'html.parser')
-    volume=soup.find_all("div",class_="volume-element")[get_volume_count(opera_url)-volume_number]
-    chapters = volume.find_all("div", class_="chapter")
-    return len(chapters)
+def get_opera_name(soup):
+    """Estrae il nome dell'opera dalla pagina già scaricata."""
+    title = soup.find("h1", class_="name")
 
-def get_chapter_page_numer(chapter_link):
-    response=requests.get(chapter_link)
-    soup = BeautifulSoup(response.text, 'html.parser')
-    select=soup.find("select",class_="page")
-    options=select.find_all("option")
-    return len(options)
+    if title is None:
+        raise ValueError("Impossibile trovare il nome dell'opera.")
 
-def get_chapter_url_img_list(chapter_link, chapter_num_page):
-    img_url_list=[]
-    for x in range(chapter_num_page):
-        actual_url=chapter_link+"/"+str(x+1)
-        response=requests.get(actual_url)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        image=soup.find("div",id="page")
-        image_url=image.find("img", class_="img-fluid")["src"]
-        print(image_url)
-        img_url_list.append(image_url)
-    return img_url_list
+    name = title.get_text(strip=True)
 
-def get_opera_name(opera_url):
-    response=requests.get(opera_url)
-    soup = BeautifulSoup(response.text, 'html.parser')
-    name = soup.find("h1",class_="name").get_text(strip=True)
+    # Evita caratteri non validi nei nomi di file e cartelle.
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name).strip(" .")
+
+    if not name:
+        raise ValueError("Il nome dell'opera non è valido.")
+
     return name
 
-def download_volume(opera_url,volume_number):
-    opera_name=get_opera_name(opera_url)
-    #print(opera_name)
-    chapter_number=0
-    chapters_link=get_chapter_url_list(opera_url,volume_number)
-    for chapter_link in chapters_link:
-        chapter_number+=1
-        num_page=0
-        chapter_url_img_list=get_chapter_url_img_list(chapter_link, get_chapter_page_numer(chapter_link))
-        for img in chapter_url_img_list:
-            response = requests.get(img)
-            num_page+=1
 
-            # Crea cartelle
-            dir_path = f"{opera_name}/volume-{volume_number}/capitolo-{chapter_number}"
-            os.makedirs(dir_path, exist_ok=True)
-            filename = os.path.join(dir_path, f"{num_page}.jpg")
+def get_chapter_url_list_from_soup(soup, volume_number):
+    """Estrae gli URL dei capitoli di un volume numerato da 1."""
+    volumes = get_volume_elements(soup)
+    volume_count = len(volumes)
 
-            response.raise_for_status()  # altri errori HTTP
-            # Salva l'immagine
-            with open(filename, "wb") as f:
-                f.write(response.content)
-            print(f"Pagina {num_page} del capitolo {chapter_number} scaricata!")
-
-    create_pdf(opera_name, volume_number)
-
-    dir_path = f"{opera_name}/volume-{volume_number}"
-
-    if os.path.exists(dir_path):
-        shutil.rmtree(dir_path)
-
-def download_all_volumes(opera_url):
-    volumes_num=get_volume_count(opera_url)
-    for x in range(volumes_num):
-        print("SCARICO IL VOLUME",x+1)
-        download_volume(opera_url,x+1)
-
-def create_pdf(opera_name,volume_num):
-    root = f"{opera_name}/volume-{volume_num}"
-    immagini = []
-
-    # Elenco cartelle capitoli, es: capitolo-122, capitolo-123, ...
-    capitoli = sorted(
-        [d for d in os.listdir(root) if d.startswith("capitolo-")],
-        key=lambda x: int(x.split("-")[1])  # ordina per numero capitolo
-    )
-
-    for cap in capitoli:
-        cartella = os.path.join(root, cap)
-
-        # Elenco pagine in ordine numerico
-        pagine = sorted(
-            [f for f in os.listdir(cartella) if f.endswith(".jpg")],
-            key=lambda x: int(x.split(".")[0])
+    if not 1 <= volume_number <= volume_count:
+        raise ValueError(
+            f"Volume non valido: scegli un numero tra 1 e {volume_count}."
         )
 
-        for pagina in pagine:
-            path_img = os.path.join(cartella, pagina)
-            immagini.append(path_img)
+    # Il sito mostra prima il volume più recente.
+    volume = volumes[volume_count - volume_number]
 
-    if not immagini:
-        print("Nessuna immagine trovata, impossibile creare PDF.")
+    chapter_urls = []
+
+    for chapter in volume.find_all("div", class_="chapter"):
+        link = chapter.find("a", class_="chap")
+
+        if link and link.get("href"):
+            chapter_urls.append(urljoin(soup.base_url or "", link["href"]))
+
+    # Mantiene il comportamento del programma originale.
+    chapter_urls.reverse()
+
+    return chapter_urls
+
+
+def get_chapter_url_list(opera_url, volume_number):
+    """Restituisce gli URL dei capitoli di un volume."""
+    with requests.Session() as session:
+        soup = fetch_soup(opera_url, session)
+        return get_chapter_url_list_from_soup(soup, volume_number)
+
+
+def get_chapter_number(opera_url, volume_number):
+    """Restituisce il numero di capitoli presenti in un volume."""
+    return len(get_chapter_url_list(opera_url, volume_number))
+
+
+def get_chapter_page_count(chapter_url, session):
+    """Conta le pagine indicate nel selettore HTML del capitolo."""
+    soup = fetch_soup(chapter_url, session)
+    page_select = soup.find("select", class_="page")
+
+    if page_select is None:
+        raise ValueError(f"Selettore delle pagine non trovato: {chapter_url}")
+
+    return len(page_select.find_all("option"))
+
+
+def get_chapter_image_urls(chapter_url, page_count, session):
+    """Estrae gli URL delle immagini di tutte le pagine del capitolo."""
+    image_urls = []
+
+    for page_number in range(1, page_count + 1):
+        page_url = urljoin(chapter_url.rstrip("/") + "/", str(page_number))
+        soup = fetch_soup(page_url, session)
+
+        page_container = soup.find("div", id="page")
+        image = (
+            page_container.find("img", class_="img-fluid")
+            if page_container
+            else None
+        )
+
+        if image is None or not image.get("src"):
+            raise ValueError(f"Immagine non trovata nella pagina: {page_url}")
+
+        image_urls.append(urljoin(page_url, image["src"]))
+
+    return image_urls
+
+
+def download_image(image_url, destination, session):
+    """Scarica un'immagine e la salva in formato JPEG."""
+    response = session.get(image_url, timeout=TIMEOUT)
+    response.raise_for_status()
+
+    # Conversione esplicita: il file JPEG rimane valido anche se
+    # il server restituisce un'immagine in un altro formato.
+    with Image.open(BytesIO(response.content)) as image:
+        image.convert("RGB").save(destination, format="JPEG", quality=95)
+
+
+def create_pdf(opera_name, volume_number, output_dir):
+    """Crea il PDF del volume, ordinando capitoli e pagine numericamente."""
+    volume_dir = output_dir / opera_name / f"volume-{volume_number}"
+
+    if not volume_dir.is_dir():
+        print(f"Cartella del volume non trovata: {volume_dir}")
+        return None
+
+    chapter_dirs = sorted(
+        (
+            path for path in volume_dir.iterdir()
+            if path.is_dir() and path.name.startswith("capitolo-")
+        ),
+        key=lambda path: int(path.name.split("-")[-1]),
+    )
+
+    image_paths = []
+
+    for chapter_dir in chapter_dirs:
+        pages = sorted(
+            (
+                path for path in chapter_dir.iterdir()
+                if path.is_file() and path.suffix.lower() == ".jpg"
+            ),
+            key=lambda path: int(path.stem),
+        )
+        image_paths.extend(pages)
+
+    if not image_paths:
+        print("Nessuna immagine trovata: PDF non creato.")
+        return None
+
+    pdf_path = output_dir / opera_name / f"volume-{volume_number}.pdf"
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Usa un context manager per chiudere correttamente la prima immagine.
+    with Image.open(image_paths[0]) as first_image:
+        first_image.convert("RGB").save(
+            pdf_path,
+            "PDF",
+            save_all=True,
+            append_images=[
+                Image.open(path).convert("RGB")
+                for path in image_paths[1:]
+            ],
+        )
+
+    print(f"PDF creato: {pdf_path}")
+    return pdf_path
+
+
+def _download_volume(
+    opera_url, opera_name, soup, volume_number, session, output_dir
+):
+    """Scarica un volume e genera il relativo PDF."""
+    chapter_urls = get_chapter_url_list_from_soup(soup, volume_number)
+
+    if not chapter_urls:
+        print(f"Nessun capitolo trovato per il volume {volume_number}.")
         return
 
-    # Apri tutte le immagini con Pillow
-    pil_images = [Image.open(img).convert("RGB") for img in immagini]
+    volume_dir = output_dir / opera_name / f"volume-{volume_number}"
 
-    # Prima immagine è la "copertina"
-    pdf_path = f"{opera_name}/volume-{volume_num}.pdf"
-    pil_images[0].save(pdf_path, save_all=True, append_images=pil_images[1:])
-    print(f"\n📕 PDF creato correttamente: {pdf_path}")
+    try:
+        for chapter_number, chapter_url in enumerate(chapter_urls, start=1):
+            print(f"Volume {volume_number}: capitolo {chapter_number}")
 
-if len(sys.argv)==2:
-    download_all_volumes(sys.argv[1])
-elif len(sys.argv)==3:
-    download_volume(sys.argv[1],int(sys.argv[2]))
+            page_count = get_chapter_page_count(chapter_url, session)
+            image_urls = get_chapter_image_urls(
+                chapter_url, page_count, session
+            )
+
+            chapter_dir = volume_dir / f"capitolo-{chapter_number}"
+            chapter_dir.mkdir(parents=True, exist_ok=True)
+
+            for page_number, image_url in enumerate(image_urls, start=1):
+                destination = chapter_dir / f"{page_number}.jpg"
+                download_image(image_url, destination, session)
+                print(f"  Pagina {page_number}/{page_count} scaricata")
+
+        pdf_path = create_pdf(opera_name, volume_number, output_dir)
+
+        # Elimina le immagini temporanee soltanto se il PDF è stato creato.
+        if pdf_path is not None and pdf_path.is_file():
+            shutil.rmtree(volume_dir, ignore_errors=True)
+
+    except Exception:
+        # Conserva le immagini già scaricate per consentire il recupero.
+        print(
+            f"Errore durante il download del volume {volume_number}. "
+            f"I file temporanei, se presenti, sono conservati."
+        )
+        raise
+
+
+def download_volume(opera_url, volume_number, output_dir):
+    """Scarica un singolo volume e crea il PDF."""
+    with requests.Session() as session:
+        soup = fetch_soup(opera_url, session)
+        opera_name = get_opera_name(soup)
+
+        _download_volume(
+            opera_url, opera_name, soup, volume_number, session, output_dir
+        )
+
+
+def download_all_volumes(opera_url, output_dir):
+    """Scarica tutti i volumi dell'opera."""
+    with requests.Session() as session:
+        soup = fetch_soup(opera_url, session)
+        opera_name = get_opera_name(soup)
+        volume_count = len(get_volume_elements(soup))
+
+        if volume_count == 0:
+            raise ValueError("Nessun volume trovato per questa opera.")
+
+        for volume_number in range(1, volume_count + 1):
+            print(f"\nScaricamento volume {volume_number}/{volume_count}")
+            _download_volume(
+                opera_url, opera_name, soup, volume_number,
+                session, output_dir
+            )
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Scarica i volumi di un'opera e li converte in PDF."
+    )
+
+    parser.add_argument(
+        "opera_url",
+        help="URL della pagina dell'opera"
+    )
+
+    parser.add_argument(
+        "volume",
+        nargs="?",
+        type=int,
+        help="Numero del volume da scaricare; se omesso, scarica tutti i volumi",
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output-dir",
+        type=Path,
+        default=Path.cwd(),
+        help="Cartella in cui salvare il manga (predefinita: directory corrente)",
+    )
+
+    args = parser.parse_args()
+    output_dir = args.output_dir.expanduser()
+
+    try:
+        if args.volume is None:
+            download_all_volumes(args.opera_url, output_dir)
+        elif args.volume < 1:
+            parser.error("Il numero del volume deve essere almeno 1.")
+        else:
+            download_volume(args.opera_url, args.volume, output_dir)
+
+    except (requests.RequestException, ValueError) as error:
+        parser.exit(1, f"Errore: {error}\n")
+
+
+if __name__ == "__main__":
+    main()
