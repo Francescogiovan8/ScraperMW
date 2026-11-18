@@ -1,3 +1,4 @@
+
 # 📚 MangaWorld Scraper
 
 **Scarica i volumi dei manga da MangaWorld e convertili automaticamente in PDF.**
@@ -9,6 +10,10 @@ MangaWorld Scraper è uno strumento sviluppato in Python che automatizza il down
 ## ✨ Funzionalità
 
 - 📚 **Download completo** — scarica tutti i volumi disponibili di un'opera.
+- 📕 **Download selettivo** — scegli un singolo volume oppure più volumi specifici.
+- 🔢 **Selezione tramite intervallo** — scarica un intervallo di volumi, ad esempio dal 3 all'8.
+- ➕ **Selezione multipla** — scegli più volumi utilizzando il separatore `+`.
+- 🔀 **Selezione combinata** — combina volumi singoli e intervalli nella stessa richiesta.
 - 📄 **Conversione in PDF** — genera un PDF separato per ogni volume.
 - 📂 **Destinazione personalizzabile** — scegli dove salvare i manga scaricati.
 - 🧹 **Pulizia automatica** — elimina le immagini temporanee dopo la creazione del PDF.
@@ -39,9 +44,10 @@ Le release vengono generate automaticamente tramite una procedura di build. In q
 La sintassi generale è:
 
 ```text
-ScraperMW URL_DELL_OPERA [VOLUME] [-o CARTELLA_DESTINAZIONE]
+ScraperMW URL_DELL_OPERA [SELEZIONE] [-o CARTELLA_DESTINAZIONE]
 ```
-sostituisci `ScraperMW` con il percorso e il nome effettivi del file scaricato.
+
+Sostituisci `ScraperMW` con il percorso e il nome effettivi del file scaricato.
 
 ### ⚠️ Quale URL bisogna inserire?
 
@@ -69,6 +75,56 @@ ScraperMW "URL_DELL_OPERA" 5
 
 Il numero del volume deve essere maggiore o uguale a `1` e corrispondere a un volume disponibile.
 
+### 🔢 Scaricare un intervallo di volumi
+
+Per scaricare i volumi dal 3 all'8:
+
+```bash
+ScraperMW "URL_DELL_OPERA" 3-8
+```
+
+Il programma scaricherà i volumi:
+
+- Volume 3
+- Volume 4
+- Volume 5
+- Volume 6
+- Volume 7
+- Volume 8
+
+Gli estremi dell'intervallo sono inclusi.
+
+### ➕ Scaricare più volumi specifici
+
+Per scaricare solamente i volumi 1, 3 e 5:
+
+```bash
+ScraperMW "URL_DELL_OPERA" 1+3+5
+```
+
+Puoi specificare un numero qualsiasi di volumi, separandoli con il simbolo `+`.
+
+### 🔀 Combinare volumi singoli e intervalli
+
+È possibile combinare le due modalità precedenti.
+
+Ad esempio, per scaricare i volumi 1, dal 3 al 6 e il volume 9:
+
+```bash
+ScraperMW "URL_DELL_OPERA" 1+3-6+9
+```
+
+Il programma scaricherà:
+
+- Volume 1
+- Volume 3
+- Volume 4
+- Volume 5
+- Volume 6
+- Volume 9
+
+I volumi vengono ordinati automaticamente e gli eventuali duplicati vengono eliminati.
+
 ### 📂 Scegliere la cartella di destinazione
 
 Utilizza l'opzione `-o` oppure `--output-dir` per scegliere dove salvare i file:
@@ -77,10 +133,16 @@ Utilizza l'opzione `-o` oppure `--output-dir` per scegliere dove salvare i file:
 ScraperMW "URL_DELL_OPERA" -o "/percorso/alla/cartella/Manga"
 ```
 
-Per scaricare il solo volume 5 in una cartella specifica:
+Per scaricare un intervallo in una cartella specifica:
 
 ```bash
-ScraperMW "URL_DELL_OPERA" 5 -o "/percorso/alla/cartella/Manga"
+ScraperMW "URL_DELL_OPERA" 3-8 -o "/percorso/alla/cartella/Manga"
+```
+
+Per scaricare più volumi specifici:
+
+```bash
+ScraperMW "URL_DELL_OPERA" 1+3+5 -o "/percorso/alla/cartella/Manga"
 ```
 
 Se non specifichi una destinazione, il programma utilizza la directory corrente, cioè la cartella da cui viene eseguito il comando.
