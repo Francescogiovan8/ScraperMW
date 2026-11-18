@@ -131,7 +131,19 @@ def download_image(image_url, destination, session):
     # Conversione esplicita: il file JPEG rimane valido anche se
     # il server restituisce un'immagine in un altro formato.
     with Image.open(BytesIO(response.content)) as image:
-        image.convert("RGB").save(destination, format="JPEG", quality=95)
+        image = image.convert("RGB")
+
+        image.thumbnail(
+            (1800, 2400),
+            Image.Resampling.LANCZOS
+        )
+
+        image.save(
+            destination,
+            format="JPEG",
+            quality=80,
+            optimize=True
+        )
 
 
 def create_pdf(opera_name, volume_number, output_dir):
