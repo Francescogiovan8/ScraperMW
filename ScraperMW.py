@@ -198,7 +198,7 @@ def create_pdf(opera_name, volume_number, output_dir):
 
 
 def _download_volume(
-    opera_url, opera_name, soup, volume_number, session, output_dir
+    opera_name, soup, volume_number, session, output_dir
 ):
     """Scarica un volume e genera il relativo PDF."""
     chapter_urls = get_chapter_url_list_from_soup(soup, volume_number)
@@ -243,13 +243,19 @@ def _download_volume(
 
 def download_volume(opera_url, volume_number, output_dir):
     """Scarica un singolo volume e crea il PDF."""
+
     with requests.Session() as session:
         soup = fetch_soup(opera_url, session)
         opera_name = get_opera_name(soup)
 
         _download_volume(
-            opera_url, opera_name, soup, volume_number, session, output_dir
+            opera_name,
+            soup,
+            volume_number,
+            session,
+            output_dir
         )
+
 
 
 def download_all_volumes(opera_url, output_dir):
@@ -265,12 +271,76 @@ def download_all_volumes(opera_url, output_dir):
         for volume_number in range(1, volume_count + 1):
             print(f"\nScaricamento volume {volume_number}/{volume_count}")
             _download_volume(
-                opera_url, opera_name, soup, volume_number,
-                session, output_dir
+                opera_name,
+                soup,
+                volume_number,
+                session,
+                output_dir
             )
 
 
+def download_selected_volumes(
+    opera_name, soup, volume_numbers, session, output_dir
+):
+    """Scarica una lista di volumi selezionati."""
+
+    for index, volume_number in enumerate(volume_numbers, start=1):
+
+        print(
+            f"\nScaricamento volume {volume_number} "
+            f"({index}/{len(volume_numbers)})"
+        )
+
+        _download_volume(
+            opera_name,
+            soup,
+            volume_number,
+            session,
+            output_dir
+        )
+
+
+def parse_volumes(selection, volume_count):
+    """Interpreta una selezione di volumi singoli, multipli o intervalli."""
+
+    volumes = set()
+
+    try:
+        for part in selection.split("+"):
+
+            if "-" in part:
+                start, end = map(int, part.split("-"))
+
+                if start > end:
+                    raise ValueError(
+                        "Il volume iniziale deve essere minore "
+                        "o uguale a quello finale."
+                    )
+
+                volumes.update(range(start, end + 1))
+
+            else:
+                volumes.add(int(part))
+
+    except ValueError as error:
+        raise ValueError(
+            "Formato non valido. Usa 5, 3-8 oppure 1+3+5."
+        ) from error
+
+    if not volumes:
+        raise ValueError("Nessun volume selezionato.")
+
+    if any(number < 1 or number > volume_count for number in volumes):
+        raise ValueError(
+            f"I volumi devono essere compresi tra 1 e {volume_count}."
+        )
+
+    return sorted(volumes)
+
+
+
 def main():
+
     parser = argparse.ArgumentParser(
         description="Scarica i volumi di un'opera e li converte in PDF."
     )
@@ -283,8 +353,8 @@ def main():
     parser.add_argument(
         "volume",
         nargs="?",
-        type=int,
-        help="Numero del volume da scaricare; se omesso, scarica tutti i volumi",
+        type=str,
+        help="Volumi da scaricare (es. 5, 3-8, 1+3+5)"
     )
 
     parser.add_argument(
@@ -299,15 +369,36 @@ def main():
     output_dir = args.output_dir.expanduser()
 
     try:
-        if args.volume is None:
-            download_all_volumes(args.opera_url, output_dir)
-        elif args.volume < 1:
-            parser.error("Il numero del volume deve essere almeno 1.")
-        else:
-            download_volume(args.opera_url, args.volume, output_dir)
+        with requests.Session() as session:
+
+            soup = fetch_soup(args.opera_url, session)
+            opera_name = get_opera_name(soup)
+
+            volume_count = len(get_volume_elements(soup))
+
+            if volume_count == 0:
+                raise ValueError("Nessun volume trovato per questa opera.")
+
+            if args.volume is None:
+                volume_numbers = list(range(1, volume_count + 1))
+
+            else:
+                volume_numbers = parse_volumes(
+                    args.volume,
+                    volume_count
+                )
+
+            download_selected_volumes(
+                opera_name,
+                soup,
+                volume_numbers,
+                session,
+                output_dir
+            )
 
     except (requests.RequestException, ValueError) as error:
         parser.exit(1, f"Errore: {error}\n")
+
 
 
 if __name__ == "__main__":
